@@ -1,17 +1,30 @@
-set(DMOD_MODULE_NAME        test_todmvi)
+set(DMOD_MODULE_NAME        test_libtodmvi)
 set(DMOD_MODULE_VERSION     ${PROJECT_VERSION})
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-set(DMOD_STACK_SIZE         1024)
+set(DMOD_STACK_SIZE         8192)
 set(DMOD_PRIORITY           0)
 
 dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
-    todmvi_test.c
+    libtodmvi_test.c
 )
 
+target_link_libraries(${DMOD_MODULE_NAME} libtodmvi_if)
+
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmimg@>=0.1
+    libdmview@>=0.5
+)
+
+target_compile_definitions(${DMOD_MODULE_NAME} PRIVATE
+    LIBTODMVI_TEST_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+)
+
+# A decoder for the file conversions: "TRAW" images (traw/, as dmimg's tests)
+add_subdirectory(traw)
+
 # Register the test module with ctest - this replays the same two steps CI
-# runs (see .github/templates/ci.yml.template): install the test module's
-# dependencies with dmf-get, then execute it through dmod_loader. The test's
-# exit code equals its number of failed steps (see dmod_add_test).
+# runs: install the test module's dependencies with dmf-get, then execute it
+# through dmod_loader. The test's exit code equals its number of failed steps.
 find_program(DMF_GET_EXECUTABLE dmf-get HINTS ${DMOD_TOOLS_BIN_DIR} PATHS ENV PATH)
 find_program(DMOD_LOADER_EXECUTABLE dmod_loader HINTS ${DMOD_TOOLS_BIN_DIR} PATHS ENV PATH)
 
