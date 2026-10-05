@@ -35,6 +35,8 @@ typedef struct
     bool        no_dither;      /**< RGB565 colors rounded, not dithered (ordered 4x4, as libdmview's gradients) */
     const char* compression;    /**< NULL: "fastlz" when dmod has it and it makes the file smaller;
                                      "": none; a name: that one (Dmod_Compression_*) */
+    uint16_t    blur;           /**< Blurred after scaling: the standard deviation of a Gaussian blur, in
+                                     pixels of the .dmvi (three box blurs); 0: sharp */
 } libtodmvi_options_t;
 
 typedef struct

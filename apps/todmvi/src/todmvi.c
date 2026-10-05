@@ -17,6 +17,7 @@ static void print_usage(const char* name)
     Dmod_Printf("  -f FORMAT        auto (default), rgb565, rgb565a8, argb8888, i8, a8, a4\n");
     Dmod_Printf("  -s WIDTHxHEIGHT  scale down to fit (the aspect kept); WIDTHx or xHEIGHT limit one side\n");
     Dmod_Printf("  -c COMPRESSION   fastlz, ... or none (default: fastlz when it makes the file smaller)\n");
+    Dmod_Printf("  -b SIGMA         blur (after scaling): a Gaussian blur of that standard deviation in pixels\n");
     Dmod_Printf("  --no-dither      round RGB565 colors instead of dithering them\n");
     Dmod_Printf("  -q               print nothing but errors\n");
 }
@@ -114,6 +115,19 @@ int main(int argc, char* argv[])
         {
             i++;
             options.compression = (strcmp(argv[i], "none") == 0) ? "" : argv[i];
+        }
+        else if (strcmp(a, "-b") == 0 && value)
+        {
+            uint32_t sigma = 0;
+            const char* p = argv[++i];
+            for (; *p >= '0' && *p <= '9' && sigma < 1000U; p++)
+                sigma = sigma * 10U + (uint32_t)(*p - '0');
+            if (*p != '\0' || p == argv[i] || sigma > 255U)
+            {
+                Dmod_Printf("todmvi: '%s' is not a blur of 0 ... 255 pixels\n", argv[i]);
+                return 1;
+            }
+            options.blur = (uint16_t)sigma;
         }
         else if (strcmp(a, "--no-dither") == 0)
             options.no_dither = true;

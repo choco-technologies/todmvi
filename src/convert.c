@@ -93,15 +93,103 @@ static const libtodmvi_options_t* options_or_defaults(const libtodmvi_options_t*
     return defaults;
 }
 
-/* Scale `px` to fit and encode it */
+/* ---- Blurring ---- */
+
+/* One box blur of a channel along a line: `n` values `step` apart, radius r, the ends repeated */
+static void box_line(uint16_t* v, uint32_t n, uint32_t step, uint32_t r, uint16_t* line)
+{
+    for (uint32_t i = 0; i < n; i++)
+        line[i] = v[(size_t)i * step];
+    uint32_t width = 2U * r + 1U, sum = 0;
+    for (int32_t k = -(int32_t)r; k <= (int32_t)r; k++)
+        sum += line[(k < 0) ? 0 : ((uint32_t)k >= n) ? n - 1U : (uint32_t)k];
+    for (uint32_t i = 0; i < n; i++)
+    {
+        v[(size_t)i * step] = (uint16_t)((sum + width / 2U) / width);
+        uint32_t out = (i < r) ? 0 : i - r, in = (i + r + 1U >= n) ? n - 1U : i + r + 1U;
+        sum += (uint32_t)line[in] - line[out];
+    }
+}
+
+/*
+ * A Gaussian blur of standard deviation `sigma` (pixels): three box blurs of
+ * the sizes that make it up (W. Jarosz / P. Kovesi), of the premultiplied
+ * channels, the edges repeated
+ */
+static int blur(uint32_t* px, uint32_t w, uint32_t h, uint32_t sigma)
+{
+    uint16_t* ch = Dmod_Malloc((size_t)w * h * 4U * sizeof(uint16_t));
+    uint16_t* line = Dmod_Malloc((size_t)((w > h) ? w : h) * sizeof(uint16_t));
+    if (ch == NULL || line == NULL)
+    {
+        if (ch != NULL)
+            Dmod_Free(ch);
+        if (line != NULL)
+            Dmod_Free(line);
+        return -ENOMEM;
+    }
+    size_t count = (size_t)w * h;
+    for (size_t i = 0; i < count; i++)
+    {
+        uint32_t c = px[i], a = c >> 24;
+        ch[i] = (uint16_t)(((c >> 16) & 0xFFu) * a / 255U);
+        ch[count + i] = (uint16_t)(((c >> 8) & 0xFFu) * a / 255U);
+        ch[2U * count + i] = (uint16_t)((c & 0xFFu) * a / 255U);
+        ch[3U * count + i] = (uint16_t)a;
+    }
+
+    /* Box widths: wl (odd) for the first m passes, wl + 2 for the rest - 12 sigma^2 = sum of (w^2 - 1) */
+    uint32_t ideal2 = 4U * sigma * sigma + 1U, wl = 1;
+    while ((wl + 2U) * (wl + 2U) <= ideal2)
+        wl += 2U;
+    int32_t m = (int32_t)((12 * (int64_t)sigma * sigma - 3 * (int64_t)wl * wl - 12 * (int64_t)wl - 9) / (-4 * (int64_t)wl - 4) + 1);
+    for (int32_t pass = 0; pass < 3; pass++)
+    {
+        uint32_t r = ((pass < m) ? wl : wl + 2U) / 2U;
+        for (uint32_t c = 0; c < 4U; c++)
+        {
+            uint16_t* plane = ch + c * count;
+            for (uint32_t y = 0; y < h; y++)
+                box_line(plane + (size_t)y * w, w, 1, r, line);
+            for (uint32_t x = 0; x < w; x++)
+                box_line(plane + x, h, w, r, line);
+        }
+    }
+
+    for (size_t i = 0; i < count; i++)
+    {
+        uint32_t a = ch[3U * count + i];
+        if (a == 0)
+        {
+            px[i] = 0;
+            continue;
+        }
+        uint32_t r = ch[i] * 255U / a, g = ch[count + i] * 255U / a, b = ch[2U * count + i] * 255U / a;
+        px[i] = (a << 24) | (((r > 255U) ? 255U : r) << 16) | (((g > 255U) ? 255U : g) << 8) | ((b > 255U) ? 255U : b);
+    }
+    Dmod_Free(line);
+    Dmod_Free(ch);
+    return 0;
+}
+
+/* Scale `px` to fit (and blur it) and encode it */
 static int convert(const uint32_t* px, uint32_t w, uint32_t h, uint32_t stride, const char* output,
                    const libtodmvi_options_t* o, libtodmvi_result_t* result)
 {
     uint32_t tw, th;
     fit(w, h, o, &tw, &th);
-    if (tw == w && th == h)
+    if (tw == w && th == h && o->blur == 0)
         return encode_file(px, w, h, stride, output, o, result);
     uint32_t* small = shrink(px, w, h, stride, tw, th);
+    if (small != NULL && o->blur != 0)
+    {
+        int ret = blur(small, tw, th, o->blur);
+        if (ret != 0)
+        {
+            Dmod_Free(small);
+            return ret;
+        }
+    }
     if (small == NULL)
         return -ENOMEM;
     int ret = encode_file(small, tw, th, tw, output, o, result);

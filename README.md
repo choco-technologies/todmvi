@@ -50,6 +50,7 @@ todmvi [options] IMAGE
   -f FORMAT        auto (default), rgb565, rgb565a8, argb8888, i8, a8, a4
   -s WIDTHxHEIGHT  scale down to fit (the aspect kept); WIDTHx or xHEIGHT limit one side
   -c COMPRESSION   fastlz, ... or none (default: fastlz when it makes the file smaller)
+  -b SIGMA         blur (after scaling): a Gaussian blur of that standard deviation in pixels
   --no-dither      round RGB565 colors instead of dithering them
   -q               print nothing but errors
 ```

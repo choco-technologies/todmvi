@@ -211,6 +211,32 @@ DMOD_TEST_STEP(libtodmvi_scales_down)
     DMOD_TEST_EXPECT_TRUE(r.width == 8u && r.height == 4u);
 }
 
+DMOD_TEST_STEP(libtodmvi_blurs)
+{
+    libtodmvi_result_t r;
+    libtodmvi_options_t o = uncompressed(DMVI_FORMAT_ARGB8888);
+    for (uint32_t y = 0; y < 32; y++)
+        for (uint32_t x = 0; x < 32; x++)
+            g_px[y * 32 + x] = (x < 16) ? 0xFF000000u : 0xFFFFFFFFu;     /* black | white */
+    g_px[0] = 0x00000000u;                                              /* a transparent corner */
+
+    o.blur = 4;
+    DMOD_TEST_EXPECT_EQ(libtodmvi_convert_pixels(g_px, 32, 32, 32, OUTPUT("b.dmvi"), &o, &r), 0);
+    DMOD_TEST_EXPECT_TRUE(r.width == 32u && r.height == 32u);
+    DMOD_TEST_EXPECT_TRUE(load(OUTPUT("b.dmvi")));
+
+    /* Across the edge: gray in the middle, rising from black to white, the far ends as they were */
+    uint32_t left = rd32(row(16) + 15 * 4) & 0xFFu, right = rd32(row(16) + 16 * 4) & 0xFFu;
+    DMOD_TEST_EXPECT_TRUE(left > 90u && left < 128u && right > 128u && right < 166u);
+    DMOD_TEST_EXPECT_TRUE((rd32(row(16) + 8 * 4) & 0xFFu) < left && (rd32(row(16) + 8 * 4) & 0xFFu) < 20u);
+    DMOD_TEST_EXPECT_EQ(rd32(row(16)), 0xFF000000u);
+    DMOD_TEST_EXPECT_EQ(rd32(row(16) + 31 * 4), 0xFFFFFFFFu);
+
+    /* The transparent pixel spreads its transparency, not its color: still black where it is seen */
+    uint32_t corner = rd32(row(0));
+    DMOD_TEST_EXPECT_TRUE((corner >> 24) < 0xFFu && (corner >> 24) > 0xC0u && (corner & 0x00FFFFFFu) == 0u);
+}
+
 /* xorshift - pixels that do not compress */
 static uint32_t g_seed = 12345u;
 static uint32_t noise(void)
