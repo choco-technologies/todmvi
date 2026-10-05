@@ -13,6 +13,7 @@
 | `max_width`, `max_height` | Scale down to fit, the aspect kept; 0: that side is not limited. Never scaled up |
 | `no_dither` | Round RGB565 colors instead of dithering them (ordered 4x4, the pattern of libdmview's gradients) |
 | `compression` | NULL: `"fastlz"` when dmod has it and it makes the file smaller; `""`: none; a name: that compression, always |
+| `blur` | After scaling, a Gaussian blur of that standard deviation in pixels (three box blurs of the premultiplied pixels, the edges repeated); 0: none |
 
 Formats:
 
@@ -87,6 +88,7 @@ todmvi [options] IMAGE
   -f FORMAT        auto (default), rgb565, rgb565a8, argb8888, i8, a8, a4
   -s WIDTHxHEIGHT  scale down to fit (the aspect kept); WIDTHx or xHEIGHT limit one side
   -c COMPRESSION   fastlz, ... or none (default: fastlz when it makes the file smaller)
+  -b SIGMA         blur (after scaling): a Gaussian blur of that standard deviation in pixels
   --no-dither      round RGB565 colors instead of dithering them
   -q               print nothing but errors
 ```
