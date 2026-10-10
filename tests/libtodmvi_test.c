@@ -237,6 +237,32 @@ DMOD_TEST_STEP(libtodmvi_blurs)
     DMOD_TEST_EXPECT_TRUE((corner >> 24) < 0xFFu && (corner >> 24) > 0xC0u && (corner & 0x00FFFFFFu) == 0u);
 }
 
+DMOD_TEST_STEP(libtodmvi_cuts_and_rounds)
+{
+    libtodmvi_result_t r;
+    libtodmvi_options_t o = uncompressed(DMVI_FORMAT_ARGB8888);
+    for (uint32_t y = 0; y < 20; y++)
+        for (uint32_t x = 0; x < 40; x++)
+            g_px[y * 40 + x] = (x < 10) ? 0xFFFF0000u : (x < 30) ? 0xFF00FF00u : 0xFF0000FFu;     /* red | green | blue */
+
+    /* What a 20 x 20 round box shows of it: its middle, a circle */
+    o.crop_x = 10;
+    o.crop_y = 0;
+    o.crop_w = 20;
+    o.crop_h = 20;
+    o.radius = 10;
+    DMOD_TEST_EXPECT_EQ(libtodmvi_convert_pixels(g_px, 40, 20, 40, OUTPUT("round.dmvi"), &o, &r), 0);
+    DMOD_TEST_EXPECT_TRUE(r.width == 20u && r.height == 20u);
+    DMOD_TEST_EXPECT_TRUE(load(OUTPUT("round.dmvi")));
+    DMOD_TEST_EXPECT_EQ(rd32(row(10) + 10 * 4), 0xFF00FF00u);              /* The middle: green, opaque */
+    DMOD_TEST_EXPECT_EQ(rd32(row(0)) >> 24, 0u);                          /* A corner: outside the circle */
+    DMOD_TEST_EXPECT_EQ(rd32(row(19) + 19 * 4) >> 24, 0u);
+    DMOD_TEST_EXPECT_EQ(rd32(row(10)) >> 24, 0xFFu);                      /* The circle's left: in it */
+    uint32_t edge = rd32(row(3) + 2 * 4) >> 24;                           /* On its edge: partly */
+    DMOD_TEST_EXPECT_TRUE(edge > 0u && edge < 0xFFu);
+    DMOD_TEST_EXPECT_EQ(rd32(row(10)) & 0x00FFFFFFu, 0x0000FF00u);        /* No red: cut off */
+}
+
 /* xorshift - pixels that do not compress */
 static uint32_t g_seed = 12345u;
 static uint32_t noise(void)
