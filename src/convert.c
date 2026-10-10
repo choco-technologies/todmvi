@@ -172,13 +172,74 @@ static int blur(uint32_t* px, uint32_t w, uint32_t h, uint32_t sigma)
     return 0;
 }
 
-/* Scale `px` to fit (and blur it) and encode it */
+/* Coverage (0 ... 16) of a pixel by a rounded rectangle w x h of radius r: 4 x 4 samples */
+static uint32_t rounded_coverage(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t r)
+{
+    uint32_t covered = 0;
+    for (uint32_t sy = 0; sy < 4u; sy++)
+    {
+        for (uint32_t sx = 0; sx < 4u; sx++)
+        {
+            /* The sample, in 1/8 px, against the nearest corner's circle */
+            int32_t px = (int32_t)(x * 8u + sx * 2u + 1u), py = (int32_t)(y * 8u + sy * 2u + 1u);
+            int32_t cx = (px < (int32_t)(r * 8u)) ? (int32_t)(r * 8u) : (px > (int32_t)((w - r) * 8u)) ? (int32_t)((w - r) * 8u) : px;
+            int32_t cy = (py < (int32_t)(r * 8u)) ? (int32_t)(r * 8u) : (py > (int32_t)((h - r) * 8u)) ? (int32_t)((h - r) * 8u) : py;
+            int64_t dx = px - cx, dy = py - cy;
+            covered += (dx * dx + dy * dy <= (int64_t)r * r * 64) ? 1u : 0u;
+        }
+    }
+    return covered;
+}
+
+/* What of an image is shown, cut out; its corners rounded - a new buffer (px freed) */
+static uint32_t* cut_and_round(uint32_t* px, uint32_t* w, uint32_t* h, const libtodmvi_options_t* o)
+{
+    uint32_t x0 = 0, y0 = 0, cw = *w, ch = *h;
+    if (o->crop_w > 0 && o->crop_h > 0)
+    {
+        x0 = (o->crop_x < *w) ? o->crop_x : *w - 1U;
+        y0 = (o->crop_y < *h) ? o->crop_y : *h - 1U;
+        cw = (x0 + o->crop_w <= *w) ? o->crop_w : *w - x0;
+        ch = (y0 + o->crop_h <= *h) ? o->crop_h : *h - y0;
+    }
+    uint32_t* out = Dmod_Malloc((size_t)cw * ch * sizeof(uint32_t));
+    if (out == NULL)
+    {
+        Dmod_Free(px);
+        return NULL;
+    }
+    uint32_t r = o->radius;
+    if (r * 2u > cw)
+        r = cw / 2u;
+    if (r * 2u > ch)
+        r = ch / 2u;
+    for (uint32_t y = 0; y < ch; y++)
+    {
+        for (uint32_t x = 0; x < cw; x++)
+        {
+            uint32_t p = px[(y0 + y) * *w + x0 + x];
+            if (r > 0 && (x < r || x >= cw - r) && (y < r || y >= ch - r))
+            {
+                uint32_t a = ((p >> 24) * rounded_coverage(x, y, cw, ch, r) + 8u) / 16u;
+                p = (a << 24) | (p & 0x00FFFFFFu);
+            }
+            out[y * cw + x] = p;
+        }
+    }
+    Dmod_Free(px);
+    *w = cw;
+    *h = ch;
+    return out;
+}
+
+/* Scale `px` to fit (and blur it, cut it, round it) and encode it */
 static int convert(const uint32_t* px, uint32_t w, uint32_t h, uint32_t stride, const char* output,
                    const libtodmvi_options_t* o, libtodmvi_result_t* result)
 {
     uint32_t tw, th;
     fit(w, h, o, &tw, &th);
-    if (tw == w && th == h && o->blur == 0)
+    bool shaped = (o->crop_w > 0 && o->crop_h > 0) || o->radius > 0;
+    if (tw == w && th == h && o->blur == 0 && !shaped)
         return encode_file(px, w, h, stride, output, o, result);
     uint32_t* small = shrink(px, w, h, stride, tw, th);
     if (small != NULL && o->blur != 0)
@@ -190,6 +251,8 @@ static int convert(const uint32_t* px, uint32_t w, uint32_t h, uint32_t stride, 
             return ret;
         }
     }
+    if (small != NULL && shaped)
+        small = cut_and_round(small, &tw, &th, o);
     if (small == NULL)
         return -ENOMEM;
     int ret = encode_file(small, tw, th, tw, output, o, result);

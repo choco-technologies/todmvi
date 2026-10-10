@@ -37,6 +37,12 @@ typedef struct
                                      "": none; a name: that one (Dmod_Compression_*) */
     uint16_t    blur;           /**< Blurred after scaling: the standard deviation of a Gaussian blur, in
                                      pixels of the .dmvi (three box blurs); 0: sharp */
+    uint16_t    crop_x;         /**< Cut after scaling (and blurring): what of it is shown - x, y, w, h in */
+    uint16_t    crop_y;         /**< its pixels; crop_w 0: all of it */
+    uint16_t    crop_w;
+    uint16_t    crop_h;
+    uint16_t    radius;         /**< Its corners rounded (after cutting), pixels: what is outside transparent
+                                     (antialiased) - an image in a rounded box; 0: square */
 } libtodmvi_options_t;
 
 typedef struct

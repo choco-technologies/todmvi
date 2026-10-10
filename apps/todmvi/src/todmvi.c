@@ -18,6 +18,8 @@ static void print_usage(const char* name)
     Dmod_Printf("  -s WIDTHxHEIGHT  scale down to fit (the aspect kept); WIDTHx or xHEIGHT limit one side\n");
     Dmod_Printf("  -c COMPRESSION   fastlz, ... or none (default: fastlz when it makes the file smaller)\n");
     Dmod_Printf("  -b SIGMA         blur (after scaling): a Gaussian blur of that standard deviation in pixels\n");
+    Dmod_Printf("  -k X,Y,W,H       keep only that of it (after scaling and blurring): what a box shows\n");
+    Dmod_Printf("  -r RADIUS        round its corners (after -k), pixels: outside them transparent\n");
     Dmod_Printf("  --no-dither      round RGB565 colors instead of dithering them\n");
     Dmod_Printf("  -q               print nothing but errors\n");
 }
@@ -128,6 +130,44 @@ int main(int argc, char* argv[])
                 return 1;
             }
             options.blur = (uint16_t)sigma;
+        }
+        else if (strcmp(a, "-k") == 0 && value)
+        {
+            /* X,Y,W,H */
+            uint32_t v[4] = { 0, 0, 0, 0 };
+            const char* p = argv[++i];
+            int k = 0;
+            for (; *p != '\0' && k < 4; p++)
+            {
+                if (*p == ',')
+                    k++;
+                else if (*p >= '0' && *p <= '9' && v[k] < 100000U)
+                    v[k] = v[k] * 10U + (uint32_t)(*p - '0');
+                else
+                    break;
+            }
+            if (*p != '\0' || k != 3 || v[2] == 0 || v[3] == 0 || v[0] > 0xFFFFu || v[1] > 0xFFFFu || v[2] > 0xFFFFu || v[3] > 0xFFFFu)
+            {
+                Dmod_Printf("todmvi: '%s' is not what to keep (X,Y,W,H)\n", argv[i]);
+                return 1;
+            }
+            options.crop_x = (uint16_t)v[0];
+            options.crop_y = (uint16_t)v[1];
+            options.crop_w = (uint16_t)v[2];
+            options.crop_h = (uint16_t)v[3];
+        }
+        else if (strcmp(a, "-r") == 0 && value)
+        {
+            uint32_t r = 0;
+            const char* p = argv[++i];
+            for (; *p >= '0' && *p <= '9' && r < 100000U; p++)
+                r = r * 10U + (uint32_t)(*p - '0');
+            if (*p != '\0' || p == argv[i] || r > 0xFFFFu)
+            {
+                Dmod_Printf("todmvi: '%s' is not a radius in pixels\n", argv[i]);
+                return 1;
+            }
+            options.radius = (uint16_t)r;
         }
         else if (strcmp(a, "--no-dither") == 0)
             options.no_dither = true;
